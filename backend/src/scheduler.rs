@@ -1,15 +1,14 @@
 use chrono::{Timelike, Utc};
 use reqwest::Client;
-use sqlx::PgPool;
 use std::time::Duration;
 
-use crate::db;
 use crate::email::{self, EmailConfig};
 use crate::models::NewsletterConfig;
 use crate::openclaw_client::{self, OpenClawConfig};
+use crate::supabase::SupabaseClient;
 
 pub fn run_scheduler(
-    pool: PgPool,
+    supabase: SupabaseClient,
     openclaw: OpenClawConfig,
     email_config: EmailConfig,
 ) {
@@ -18,7 +17,7 @@ pub fn run_scheduler(
         let check_interval = Duration::from_secs(60 * 5);
         loop {
             tokio::time::sleep(check_interval).await;
-            if let Err(e) = run_tick(&pool, &client, &openclaw, &email_config).await {
+            if let Err(e) = run_tick(&supabase, &client, &openclaw, &email_config).await {
                 eprintln!("scheduler tick error: {}", e);
             }
         }
@@ -26,25 +25,23 @@ pub fn run_scheduler(
 }
 
 async fn run_tick(
-    pool: &PgPool,
+    supabase: &SupabaseClient,
     client: &Client,
     openclaw: &OpenClawConfig,
     email_config: &EmailConfig,
 ) -> Result<(), String> {
-    let configs = db::list_active_newsletter_configs(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let configs = supabase.list_active_newsletter_configs().await?;
     for config in configs {
-        if !is_due(pool, &config).await.map_err(|e| e.to_string())? {
+        if !is_due(supabase, &config).await? {
             continue;
         }
-        run_one(pool, client, openclaw, email_config, &config).await?;
+        run_one(supabase, client, openclaw, email_config, &config).await?;
     }
     Ok(())
 }
 
-async fn is_due(pool: &PgPool, config: &NewsletterConfig) -> Result<bool, sqlx::Error> {
-    let last = db::get_last_run_at(pool, config.id).await?;
+async fn is_due(supabase: &SupabaseClient, config: &NewsletterConfig) -> Result<bool, String> {
+    let last = supabase.get_last_run_at(config.id).await?;
     let now = Utc::now();
     let today = now.date_naive();
     if let Some(last_run) = last {
@@ -59,7 +56,7 @@ async fn is_due(pool: &PgPool, config: &NewsletterConfig) -> Result<bool, sqlx::
 }
 
 async fn run_one(
-    pool: &PgPool,
+    supabase: &SupabaseClient,
     client: &Client,
     openclaw: &OpenClawConfig,
     email_config: &EmailConfig,
@@ -68,14 +65,9 @@ async fn run_one(
     let body = match openclaw_client::generate_newsletter(client, openclaw, config).await {
         Ok(b) => b,
         Err(e) => {
-            let _ = db::insert_run_log(
-                pool,
-                config.id,
-                "failure",
-                Some(&e),
-                None,
-            )
-            .await;
+            let _ = supabase
+                .insert_run_log(config.id, "failure", Some(&e), None)
+                .await;
             return Err(e);
         }
     };
@@ -88,18 +80,13 @@ async fn run_one(
     )
     .await
     {
-        let _ = db::insert_run_log(
-            pool,
-            config.id,
-            "failure",
-            Some(&e),
-            None,
-        )
-        .await;
+        let _ = supabase
+            .insert_run_log(config.id, "failure", Some(&e), None)
+            .await;
         return Err(e);
     }
-    db::insert_run_log(pool, config.id, "success", None, None)
-        .await
-        .map_err(|e| e.to_string())?;
+    supabase
+        .insert_run_log(config.id, "success", None, None)
+        .await?;
     Ok(())
 }

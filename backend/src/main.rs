@@ -1,23 +1,29 @@
 mod auth;
-mod db;
 mod email;
 mod models;
 mod openclaw_client;
 mod routes;
 mod scheduler;
+mod supabase;
 
 use rocket_cors::{AllowedOrigins, CorsOptions};
 
 #[rocket::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let supabase_url = std::env::var("SUPABASE_URL").expect("SUPABASE_URL must be set (e.g. https://PROJECT_REF.supabase.co)");
+    let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+        .expect("SUPABASE_SERVICE_ROLE_KEY must be set for backend REST API");
     let jwt_secret = std::env::var("SUPABASE_JWT_SECRET").ok();
     let jwt_audience = std::env::var("SUPABASE_JWT_AUDIENCE").ok();
-    let jwt_config = auth::JwtConfig::from_env(jwt_secret.as_deref(), jwt_audience, &database_url)
-        .expect("set SUPABASE_JWT_SECRET (legacy) or use a Supabase DATABASE_URL for JWT signing keys");
+    let jwt_config = auth::JwtConfig::from_env(
+        jwt_secret.as_deref(),
+        jwt_audience,
+        None,
+        Some(&supabase_url),
+    ).expect("set SUPABASE_JWT_SECRET (legacy) or SUPABASE_URL for JWT signing keys");
 
-    let pool = db::create_pool(&database_url).await?;
+    let supabase = supabase::SupabaseClient::new(supabase_url.clone(), supabase_key);
 
     let openclaw_url = std::env::var("OPENCLAW_GATEWAY_URL").unwrap_or_else(|_| String::new());
     let openclaw_token = std::env::var("OPENCLAW_GATEWAY_TOKEN").unwrap_or_else(|_| String::new());
@@ -41,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         from_address: smtp_from,
     };
 
-    scheduler::run_scheduler(pool.clone(), openclaw_config, email_config);
+    scheduler::run_scheduler(supabase.clone(), openclaw_config, email_config);
 
     let cors_origins = std::env::var("CORS_ORIGINS")
         .unwrap_or_else(|_| "*".into());
@@ -61,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _ = rocket::build()
         .attach(cors)
-        .manage(pool)
+        .manage(supabase)
         .manage(jwt_config)
         .mount(
             "/api",

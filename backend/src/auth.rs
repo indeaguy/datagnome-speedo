@@ -50,11 +50,12 @@ fn supabase_url_from_database_url(database_url: &str) -> Option<String> {
 }
 
 impl JwtConfig {
-    /// Build from env: use SUPABASE_JWT_SECRET (legacy) if set, else derive from DATABASE_URL for JWKS.
+    /// Build from env: use SUPABASE_JWT_SECRET (legacy) if set, else SUPABASE_URL or DATABASE_URL for JWKS.
     pub fn from_env(
         jwt_secret: Option<&str>,
         audience: Option<String>,
-        database_url: &str,
+        database_url: Option<&str>,
+        supabase_url: Option<&str>,
     ) -> Result<Self, String> {
         if let Some(secret) = jwt_secret {
             if !secret.is_empty() {
@@ -64,14 +65,18 @@ impl JwtConfig {
                 });
             }
         }
-        if let Some(url) = supabase_url_from_database_url(database_url) {
+        let url = supabase_url
+            .map(String::from)
+            .filter(|s| !s.is_empty())
+            .or_else(|| database_url.and_then(|u| supabase_url_from_database_url(u)));
+        if let Some(url) = url {
             return Ok(JwtConfig::Jwks {
-                jwks_url: format!("{}/auth/v1/.well-known/jwks.json", url),
-                issuer: format!("{}/auth/v1", url),
+                jwks_url: format!("{}/auth/v1/.well-known/jwks.json", url.trim_end_matches('/')),
+                issuer: format!("{}/auth/v1", url.trim_end_matches('/')),
                 audience,
             });
         }
-        Err("Set SUPABASE_JWT_SECRET (legacy), or use a Supabase DATABASE_URL (db.PROJECT_REF.supabase.co) for JWT signing keys".into())
+        Err("Set SUPABASE_JWT_SECRET (legacy), or SUPABASE_URL, or a Supabase DATABASE_URL for JWT signing keys".into())
     }
 }
 

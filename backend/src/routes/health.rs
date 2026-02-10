@@ -1,14 +1,15 @@
 use rocket::get;
 use rocket::serde::json::Json;
 use rocket::State;
-use sqlx::PgPool;
 use std::collections::HashMap;
 
+use crate::supabase::SupabaseClient;
+
 #[get("/health")]
-pub async fn health(pool: &State<PgPool>) -> Json<HashMap<&'static str, &'static str>> {
+pub async fn health(supabase: &State<SupabaseClient>) -> Json<HashMap<&'static str, &'static str>> {
     let mut m = HashMap::new();
     m.insert("status", "ok");
-    if sqlx::query("select 1").fetch_one(pool.inner()).await.is_err() {
+    if !supabase.health_check().await {
         m.insert("status", "db_error");
     }
     Json(m)

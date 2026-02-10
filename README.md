@@ -5,8 +5,8 @@ Multi-user daily newsletter app: users sign in (Supabase), configure a newslette
 ## Stack
 
 - **Frontend**: React (Vite + TypeScript), Supabase Auth, React Router.
-- **Backend**: Rust (Rocket 0.5), SQLx (Postgres), JWT auth, reqwest (OpenClaw), lettre (SMTP).
-- **Data**: Supabase (Auth + Postgres). Tables: `newsletter_config`, `newsletter_run_log`.
+- **Backend**: Rust (Rocket 0.5), Supabase REST API (HTTPS only), JWT auth, reqwest (OpenClaw), lettre (SMTP).
+- **Data**: Supabase (Auth + Postgres). Tables: `newsletter_config`, `newsletter_run_log`; backend talks to them via the auto-generated REST API (no direct DB connection).
 - **Deploy**: Docker (backend + frontend) and optional nginx + HTTPS on a VPS.
 
 We do **not** assume you already have OpenClaw. You need to install and run an OpenClaw Gateway separately so the backend can call it to generate newsletter content. Until then, you can run Speedo for auth and CRUD; the scheduler will log errors when it tries to generate (or you can leave OpenClaw env vars unset and only test the API + UI).
@@ -14,7 +14,7 @@ We do **not** assume you already have OpenClaw. You need to install and run an O
 ## Local development
 
 1. **Backend**
-   - Copy `.env.example` to `.env` in the **project root** and set at least `DATABASE_URL` (Supabase Postgres connection string), `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_AUDIENCE`. Optionally set OpenClaw and SMTP for the scheduler. For local dev set `VITE_API_BASE_URL=http://localhost:8080`.
+   - Copy `.env.example` to `.env` in the **project root** and set at least `SUPABASE_URL` (e.g. `https://PROJECT_REF.supabase.co`), `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_JWT_AUDIENCE`. Optionally set `SUPABASE_JWT_SECRET` (legacy) or leave unset to use JWKS from `SUPABASE_URL`. Optionally set OpenClaw and SMTP for the scheduler. For local dev set `VITE_API_BASE_URL=http://localhost:8080`.
    - From repo root: `cargo run --manifest-path backend/Cargo.toml` (so `.env` in the root is loaded). API listens on `http://127.0.0.1:8080`.
 
 2. **Frontend**
@@ -196,8 +196,9 @@ You can run Speedo (auth, config CRUD, UI) with OpenClaw env vars **unset or emp
 
 | Variable | Where | Purpose |
 |----------|--------|---------|
-| `DATABASE_URL` | Backend | Supabase Postgres connection string (Project Settings → Database). |
-| `SUPABASE_JWT_SECRET` | Backend | Optional. Legacy JWT secret (if your project still shows it). If unset and `DATABASE_URL` is a Supabase URL (`db.PROJECT_REF.supabase.co`), the backend derives the JWKS URL from it for JWT signing keys. |
+| `SUPABASE_URL` | Backend | Supabase project URL (e.g. `https://PROJECT_REF.supabase.co`). Used for REST API and JWKS. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Backend | Service role key (Project Settings → API). Backend uses it for Supabase REST API; keep secret. |
+| `SUPABASE_JWT_SECRET` | Backend | Optional. Legacy JWT secret. If unset, backend uses JWKS from `SUPABASE_URL` for JWT verification. |
 | `SUPABASE_JWT_AUDIENCE` | Backend | Usually `authenticated`. |
 | `OPENCLAW_GATEWAY_URL` | Backend | OpenClaw Gateway URL, e.g. `http://host:18789/v1/responses`. |
 | `OPENCLAW_GATEWAY_TOKEN` | Backend | Token for `gateway.auth.token`. |
@@ -222,7 +223,7 @@ Use this to test with the backend at `http://142.44.145.173:8080` and the fronte
    - Clone the repo (e.g. `git clone <repo> /opt/speedo && cd /opt/speedo`).
 
 2. **Backend .env**
-   - In `/opt/speedo` create `.env` with at least: `DATABASE_URL`, `SUPABASE_JWT_AUDIENCE`, and **`CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`** so the local frontend can call the API. Set SMTP/OpenClaw if you need them.
+   - In `/opt/speedo` create `.env` with at least: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_AUDIENCE`, and **`CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`** so the local frontend can call the API. Set SMTP/OpenClaw if you need them.
 
 3. **Build and run**
    - `cd /opt/speedo && cargo build --release --manifest-path backend/Cargo.toml`
@@ -251,7 +252,7 @@ Use this when you serve the frontend as static files (e.g. upload via SFTP/FTP t
    - `api.speedo.email` → A record to the same VPS IP (for the API).
 
 2. **Backend on the VPS**
-   - Install Rust (or build the backend binary elsewhere and copy it). Clone the repo, create `.env` with `DATABASE_URL`, `SUPABASE_JWT_AUDIENCE`, SMTP, OpenClaw vars, and **`CORS_ORIGINS=https://speedo.email`** (so the frontend origin can call the API). Run the backend (e.g. `cargo run --release` or run the built binary) listening on a port (e.g. 8080). Run it under systemd so it survives reboots.
+   - Install Rust (or build the backend binary elsewhere and copy it). Clone the repo, create `.env` with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_AUDIENCE`, SMTP, OpenClaw vars, and **`CORS_ORIGINS=https://speedo.email`** (so the frontend origin can call the API). Run the backend (e.g. `cargo run --release` or run the built binary) listening on a port (e.g. 8080). Run it under systemd so it survives reboots.
 
 3. **nginx**
    - **api.speedo.email**: server block with `server_name api.speedo.email`; `location /` → `proxy_pass http://127.0.0.1:8080;` (plus `proxy_set_header Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`).
@@ -291,7 +292,7 @@ Use this when you serve the frontend as static files (e.g. upload via SFTP/FTP t
    - 502: check container ports and nginx `proxy_pass`.
    - 401 on API: check `SUPABASE_JWT_SECRET` and `SUPABASE_JWT_AUDIENCE`; ensure frontend sends the Supabase access token.
    - Newsletter not sending: backend logs; verify OpenClaw URL and SMTP credentials.
-   - DB errors: check `DATABASE_URL` and Supabase network/allowlist.
+   - DB/API errors: check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; ensure the backend can reach Supabase over HTTPS.
    - Wrong API in browser: rebuild frontend after changing `VITE_API_BASE_URL`.
 
 9. **Checklist**
