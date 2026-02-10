@@ -6,10 +6,35 @@ use uuid::Uuid;
 
 use crate::models::{CreateNewsletterConfig, NewsletterConfig, UpdateNewsletterConfig};
 
+/// Rewrite DATABASE_URL to use the host's IPv4 address. Avoids "Network is unreachable"
+/// on hosts that have no IPv6 route (e.g. some VPS) when the resolver returns AAAA first.
+async fn database_url_prefer_ipv4(url: &str) -> Option<String> {
+    let after_proto = url.split("://").nth(1)?;
+    let authority = after_proto.split('/').next()?.split('?').next()?;
+    let host_port = authority.rsplit('@').next()?;
+    let lookup_addr = if host_port.contains(':') {
+        host_port.to_string()
+    } else {
+        format!("{}:5432", host_port)
+    };
+    let addrs: Vec<_> = tokio::net::lookup_host(&lookup_addr).await.ok()?.collect();
+    let ipv4 = addrs.into_iter().find(|a| a.is_ipv4())?;
+    let replacement = format!("{}:{}", ipv4.ip(), ipv4.port());
+    let new_url = url.replace(host_port, &replacement);
+    if new_url == url {
+        None
+    } else {
+        Some(new_url)
+    }
+}
+
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    let connect_url = database_url_prefer_ipv4(database_url)
+        .await
+        .unwrap_or_else(|| database_url.to_string());
     PgPoolOptions::new()
         .max_connections(5)
-        .connect(database_url)
+        .connect(&connect_url)
         .await
 }
 
