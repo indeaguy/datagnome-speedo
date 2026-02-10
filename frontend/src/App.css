@@ -1,0 +1,74 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #444;
+}
+.app-header nav { display: flex; gap: 1rem; }
+.app-header .user-email { margin-left: auto; color: #888; font-size: 0.9em; }
+.app-main { text-align: left; }
+
+.auth-page { text-align: center; max-width: 360px; margin: 2rem auto; }
+.auth-form { display: flex; flex-direction: column; gap: 0.75rem; text-align: left; }
+.auth-form input { padding: 0.5rem; }
+.auth-error { color: #c00; font-size: 0.9em; }
+.auth-toggle { background: none; border: none; color: #646cff; cursor: pointer; font-size: 0.9em; }
+
+.dashboard .newsletter-list { list-style: none; padding: 0; }
+.dashboard .newsletter-item { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+.dashboard .newsletter-item a { flex: 1; }
+.dashboard .delete-btn { font-size: 0.85em; }
+
+.edit-newsletter .newsletter-form { max-width: 480px; display: flex; flex-direction: column; gap: 1rem; }
+.edit-newsletter label { display: flex; flex-direction: column; gap: 0.25rem; }
+.edit-newsletter input[type="text"], .edit-newsletter input[type="email"], .edit-newsletter input[type="time"], .edit-newsletter select { padding: 0.5rem; }
+.edit-newsletter .checkbox-label { flex-direction: row; align-items: center; }
+.edit-newsletter .features { margin: 1rem 0; }
+.edit-newsletter .feature-row { margin-bottom: 0.75rem; }
+.edit-newsletter .feature-request { margin-top: 0.25rem; }
+.edit-newsletter .form-actions { display: flex; gap: 0.5rem; }
+.error { color: #c00; }
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}

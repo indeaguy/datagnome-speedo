@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+node_modules/
+frontend/dist/
+backend/target/
+*.log
+.DS_Store
+.vscode/
+*.swp

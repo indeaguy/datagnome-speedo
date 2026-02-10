@@ -1,0 +1,14 @@
+# Agents and integration
+
+## OpenClaw
+
+This project uses an **OpenClaw Gateway** to generate newsletter content. The backend calls the OpenResponses-compatible HTTP endpoint (`POST /v1/responses`) with a prompt built from the user’s newsletter config (title, topics, tone, length, and enabled features with their custom instructions).
+
+- **Agent**: Configure OpenClaw with an agent (e.g. `main`) that can act as a **daily newsletter writer**: it should produce a single newsletter document, include only the sections requested by the user, and follow per-section instructions (e.g. “Competitor analysis”, “Market segment summary”, “Identify risks” and any custom request text).
+- **Config**: Enable the endpoint in OpenClaw (`gateway.http.endpoints.responses.enabled=true`) and set auth (e.g. `gateway.auth.mode="token"`). The backend sends `Authorization: Bearer OPENCLAW_GATEWAY_TOKEN` and `x-openclaw-agent-id: OPENCLAW_AGENT_ID` (from env).
+- **Prompt**: The backend builds a user message from the newsletter config and optional system-style instructions so the agent outputs plain text or markdown suitable for email.
+
+## Supabase auth and backend
+
+- **Frontend**: Users sign in with Supabase Auth (email/password). The frontend sends the Supabase `access_token` in the `Authorization: Bearer <token>` header on every request to the backend.
+- **Backend**: A Rocket **request guard** (`User`) implements `FromRequest`: it reads the `Authorization` header, verifies the JWT using `SUPABASE_JWT_SECRET` (and optionally `SUPABASE_JWT_AUDIENCE`), and injects a `UserContext` (user_id, email) into protected routes. Invalid or missing tokens result in 401. All newsletter CRUD routes require this guard, so only authenticated users can read or change their own configs.

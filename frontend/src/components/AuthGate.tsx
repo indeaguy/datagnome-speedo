@@ -1,0 +1,105 @@
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from '../supabaseClient';
+import { Link } from 'react-router-dom';
+
+type AuthGateProps = {
+  children: ReactNode;
+};
+
+export function AuthGate({ children }: AuthGateProps) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Auth failed');
+    }
+  };
+
+  const handleSignOut = () => {
+    supabase.auth.signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="auth-loading">
+        <p>Loading…</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="auth-page">
+        <h1>Speedo</h1>
+        <p>Sign in to manage your daily newsletters.</p>
+        <form onSubmit={handleSubmit} className="auth-form">
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          {authError && <p className="auth-error">{authError}</p>}
+          <button type="submit">{isSignUp ? 'Sign up' : 'Sign in'}</button>
+          <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="auth-toggle">
+            {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <header className="app-header">
+        <nav>
+          <Link to="/dashboard">Dashboard</Link>
+          <Link to="/newsletters/new">New newsletter</Link>
+        </nav>
+        <span className="user-email">{session.user?.email}</span>
+        <button type="button" onClick={handleSignOut} className="sign-out">
+          Sign out
+        </button>
+      </header>
+      <main className="app-main">{children}</main>
+    </>
+  );
+}
