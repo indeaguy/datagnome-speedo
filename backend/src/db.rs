@@ -1,4 +1,7 @@
 use chrono::NaiveTime;
+use hickory_resolver::config::ResolverConfig;
+use hickory_resolver::name_server::TokioConnectionProvider;
+use hickory_resolver::TokioResolver;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
 use sqlx::PgPool;
@@ -7,19 +10,41 @@ use uuid::Uuid;
 use crate::models::{CreateNewsletterConfig, NewsletterConfig, UpdateNewsletterConfig};
 
 /// Rewrite DATABASE_URL to use the host's IPv4 address. Avoids "Network is unreachable"
-/// on hosts that have no IPv6 route (e.g. some VPS) when the resolver returns AAAA first.
+/// on hosts that have no IPv6 route (e.g. some VPS) when the system resolver returns
+/// only AAAA. Tries system lookup first, then Google DNS (A-record only) as fallback.
 async fn database_url_prefer_ipv4(url: &str) -> Option<String> {
     let after_proto = url.split("://").nth(1)?;
     let authority = after_proto.split('/').next()?.split('?').next()?;
     let host_port = authority.rsplit('@').next()?;
-    let lookup_addr = if host_port.contains(':') {
-        host_port.to_string()
+    let (host_only, port) = if let Some((h, p)) = host_port.split_once(':') {
+        (h, p.to_string())
     } else {
-        format!("{}:5432", host_port)
+        (host_port, "5432".to_string())
     };
-    let addrs: Vec<_> = tokio::net::lookup_host(&lookup_addr).await.ok()?.collect();
-    let ipv4 = addrs.into_iter().find(|a| a.is_ipv4())?;
-    let replacement = format!("{}:{}", ipv4.ip(), ipv4.port());
+
+    // 1) System lookup: use first IPv4 if present
+    let lookup_addr = format!("{}:{}", host_only, port);
+    if let Ok(addrs) = tokio::net::lookup_host(&lookup_addr).await {
+        let addrs: Vec<_> = addrs.collect();
+        if let Some(ipv4) = addrs.into_iter().find(|a| a.is_ipv4()) {
+            let replacement = format!("{}:{}", ipv4.ip(), ipv4.port());
+            let new_url = url.replace(host_port, &replacement);
+            if new_url != url {
+                return Some(new_url);
+            }
+        }
+    }
+
+    // 2) Fallback: Google DNS A-record only (Supabase often has A but system may return AAAA only)
+    let resolver = TokioResolver::builder_with_config(
+        ResolverConfig::google(),
+        TokioConnectionProvider::default(),
+    )
+    .build();
+    let name = format!("{}.", host_only.trim_end_matches('.'));
+    let ipv4_lookup = resolver.ipv4_lookup(name).await.ok()?;
+    let ipv4 = *ipv4_lookup.iter().next()?;
+    let replacement = format!("{}:{}", ipv4, port);
     let new_url = url.replace(host_port, &replacement);
     if new_url == url {
         None
@@ -29,9 +54,13 @@ async fn database_url_prefer_ipv4(url: &str) -> Option<String> {
 }
 
 pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    let connect_url = database_url_prefer_ipv4(database_url)
-        .await
-        .unwrap_or_else(|| database_url.to_string());
+    let connect_url = match database_url_prefer_ipv4(database_url).await {
+        Some(url) => url,
+        None => {
+            eprintln!("DB: using DATABASE_URL as-is (IPv4 rewrite skipped or failed)");
+            database_url.to_string()
+        }
+    };
     PgPoolOptions::new()
         .max_connections(5)
         .connect(&connect_url)
