@@ -3,8 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    ports:
-      - "8080:8080"
+    network_mode: host
     env_file: .env
     environment:
       - ROCKET_ADDRESS=0.0.0.0
