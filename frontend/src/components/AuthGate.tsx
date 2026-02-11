@@ -51,11 +51,11 @@ export function AuthGate({ children }: AuthGateProps) {
       if (isSignUp) {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        if (data.session) navigate('/newsletters/new', { replace: true });
+        if (data.session) navigate('/dashboard', { replace: true });
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        if (data.session) navigate('/newsletters/new', { replace: true });
+        if (data.session) navigate('/dashboard', { replace: true });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Auth failed';
