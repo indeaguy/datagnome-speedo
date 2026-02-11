@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         from_address: smtp_from,
     };
 
-    scheduler::run_scheduler(supabase.clone(), openclaw_config, email_config);
+    scheduler::run_scheduler(supabase.clone(), openclaw_config.clone(), email_config.clone());
 
     let cors_origins = std::env::var("CORS_ORIGINS")
         .unwrap_or_else(|_| "*".into());
@@ -65,10 +65,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .to_cors()
     .map_err(|e| format!("CORS config: {}", e))?;
 
+    let http_client = reqwest::Client::new();
     let _ = rocket::build()
         .attach(cors)
         .manage(supabase)
         .manage(jwt_config)
+        .manage(openclaw_config)
+        .manage(email_config)
+        .manage(http_client)
         .mount(
             "/api",
             rocket::routes![
@@ -79,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 routes::newsletters::get,
                 routes::newsletters::update,
                 routes::newsletters::delete,
+                routes::newsletters::send_sample,
             ],
         )
         .launch()

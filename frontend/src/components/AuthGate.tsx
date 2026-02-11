@@ -148,7 +148,7 @@ export function AuthGate({ children }: AuthGateProps) {
       <header className="app-header">
         <nav>
           <Link to="/dashboard">Dashboard</Link>
-          <Link to="/newsletters/new">New newsletter</Link>
+          <Link to="/newsletters/new">Add New</Link>
         </nav>
         <span className="user-email">{session.user?.email}</span>
         <button type="button" onClick={handleSignOut} className="sign-out">

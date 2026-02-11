@@ -2,6 +2,7 @@ use crate::models::NewsletterConfig;
 use reqwest::Client;
 use serde_json::Value;
 
+#[derive(Clone)]
 pub struct OpenClawConfig {
     pub gateway_url: String,
     pub token: String,

@@ -1,10 +1,13 @@
+use chrono::Utc;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::State;
 use uuid::Uuid;
 
 use crate::auth::{ApprovedUser, User};
+use crate::email::{self, EmailConfig};
 use crate::models::{CreateNewsletterConfig, UpdateNewsletterConfig};
+use crate::openclaw_client::{self, OpenClawConfig};
 use crate::supabase::SupabaseClient;
 
 #[rocket::get("/me/approval-status")]
@@ -86,4 +89,37 @@ pub async fn delete(user: ApprovedUser, supabase: &State<SupabaseClient>, id: &s
     } else {
         Err(Status::NotFound)
     }
+}
+
+#[rocket::post("/me/newsletters/<id>/send-sample")]
+pub async fn send_sample(
+    user: ApprovedUser,
+    supabase: &State<SupabaseClient>,
+    openclaw: &State<OpenClawConfig>,
+    email_config: &State<EmailConfig>,
+    client: &State<reqwest::Client>,
+    id: &str,
+) -> Result<Json<serde_json::Value>, (Status, String)> {
+    let id = Uuid::parse_str(id).map_err(|_| (Status::BadRequest, "Invalid newsletter id".into()))?;
+    let config = supabase
+        .get_newsletter_by_id(id, user.0.user_id)
+        .await
+        .map_err(|e| (Status::InternalServerError, e))?
+        .ok_or((Status::NotFound, "Newsletter not found".into()))?;
+
+    let body = openclaw_client::generate_newsletter(client.inner(), openclaw.inner(), &config)
+        .await
+        .map_err(|e| (Status::UnprocessableEntity, e))?;
+
+    let subject = format!("{} – Sample – {}", config.title, Utc::now().format("%Y-%m-%d %H:%M"));
+    email::send_newsletter(
+        email_config.inner(),
+        &config.delivery_email,
+        &subject,
+        &body,
+    )
+    .await
+    .map_err(|e| (Status::InternalServerError, e))?;
+
+    Ok(Json(serde_json::json!({ "sent": true })))
 }

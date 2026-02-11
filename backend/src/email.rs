@@ -2,6 +2,7 @@ use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
+#[derive(Clone)]
 pub struct EmailConfig {
     pub smtp_host: String,
     pub smtp_port: u16,

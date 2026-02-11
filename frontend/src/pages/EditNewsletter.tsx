@@ -4,6 +4,7 @@ import {
   getNewsletter,
   createNewsletter,
   updateNewsletter,
+  sendNewsletterSample,
   type CreateNewsletterBody,
 } from '../lib/api';
 import { supabase } from '../supabaseClient';
@@ -17,12 +18,23 @@ const FEATURE_LABELS: Record<string, string> = {
   market_segment_summary: 'Market segment summary',
   identify_risks: 'Identify risks',
 };
+const FEATURE_DESCRIPTIONS: Record<string, string> = {
+  competitor_analysis: 'Summary of what competitors are doing and how they compare.',
+  market_segment_summary: 'Overview of market segments, size, and how they are changing.',
+  identify_risks: 'Risks and uncertainties that could affect your business or market.',
+};
+const FEATURE_PLACEHOLDERS: Record<string, string> = {
+  competitor_analysis: 'e.g. Focus on pricing moves and who\'s gaining share in EMEA.',
+  market_segment_summary: 'e.g. Break out by enterprise vs SMB and call out growth rates.',
+  identify_risks: 'e.g. Include regulatory and supply chain, rank by likelihood.',
+};
 
 export function EditNewsletter() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(!!id);
   const [saving, setSaving] = useState(false);
+  const [sendingSample, setSendingSample] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<CreateNewsletterBody>({
     title: '',
@@ -106,6 +118,21 @@ export function EditNewsletter() {
     }
   };
 
+  const handleSendSample = async () => {
+    if (!id) return;
+    setError(null);
+    setSendingSample(true);
+    try {
+      await sendNewsletterSample(id);
+      setError(null);
+      alert('Sample sent to ' + (form.delivery_email || 'your delivery email') + '.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Send sample failed');
+    } finally {
+      setSendingSample(false);
+    }
+  };
+
   if (loading) return <p>Loading…</p>;
 
   return (
@@ -123,42 +150,7 @@ export function EditNewsletter() {
           />
         </label>
         <label>
-          Topics (comma-separated)
-          <input
-            type="text"
-            value={(form.topics ?? []).join(', ')}
-            onChange={(e) => handleTopicsChange(e.target.value)}
-            placeholder="AI, markets, tech"
-          />
-        </label>
-        <label>
-          Tone
-          <select
-            value={form.tone ?? 'neutral'}
-            onChange={(e) => update({ tone: e.target.value })}
-          >
-            {TONES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Length
-          <select
-            value={form.length ?? 'medium'}
-            onChange={(e) => update({ length: e.target.value })}
-          >
-            {LENGTHS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Send time (UTC)
+          Daily send time (UTC)
           <input
             type="time"
             value={form.send_time_utc ?? '09:00'}
@@ -166,16 +158,7 @@ export function EditNewsletter() {
           />
         </label>
         <label>
-          Timezone
-          <input
-            type="text"
-            value={form.timezone ?? 'UTC'}
-            onChange={(e) => update({ timezone: e.target.value })}
-            placeholder="America/New_York"
-          />
-        </label>
-        <label>
-          Delivery email
+          Destination email address
           <input
             type="email"
             value={form.delivery_email ?? ''}
@@ -193,33 +176,56 @@ export function EditNewsletter() {
           Active (newsletter will be sent)
         </label>
 
-        <fieldset className="features">
-          <legend>Sections (enable and add custom instructions for OpenClaw)</legend>
-          {FEATURE_KEYS.map((key) => (
-            <div key={key} className="feature-row">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={form.features?.[key]?.enabled ?? false}
-                  onChange={(e) => updateFeature(key, e.target.checked)}
-                />
-                {FEATURE_LABELS[key]}
-              </label>
-              <input
-                type="text"
-                placeholder="Custom request for this section (optional)"
-                value={form.features?.[key]?.custom_request ?? ''}
-                onChange={(e) => updateFeature(key, undefined, e.target.value)}
-                className="feature-request"
-              />
-            </div>
-          ))}
-        </fieldset>
+        <div className="features">
+          <p className="features-intro">
+            Choose which sections to include and add optional custom instructions for OpenClaw.
+          </p>
+          {FEATURE_KEYS.map((key) => {
+            const enabled = form.features?.[key]?.enabled ?? false;
+            return (
+              <div key={key} className="feature-row">
+                <label className="toggle-label">
+                  <input
+                    type="checkbox"
+                    className="toggle-input"
+                    checked={enabled}
+                    onChange={(e) => updateFeature(key, e.target.checked)}
+                  />
+                  <span className="toggle-switch" aria-hidden />
+                  <span className="feature-name">{FEATURE_LABELS[key]}</span>
+                </label>
+                <div className="feature-request-block">
+                  <p className="feature-description">
+                    {FEATURE_DESCRIPTIONS[key]}
+                  </p>
+                  <textarea
+                    placeholder={FEATURE_PLACEHOLDERS[key]}
+                    value={form.features?.[key]?.custom_request ?? ''}
+                    onChange={(e) => updateFeature(key, undefined, e.target.value)}
+                    className="feature-request"
+                    rows={3}
+                    disabled={!enabled}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         <div className="form-actions">
           <button type="submit" disabled={saving}>
             {saving ? 'Saving…' : id ? 'Update' : 'Create'}
           </button>
+          {id && (
+            <button
+              type="button"
+              className="send-sample"
+              onClick={handleSendSample}
+              disabled={saving || sendingSample}
+            >
+              {sendingSample ? 'Sending…' : 'Send a sample now'}
+            </button>
+          )}
           <button type="button" onClick={() => navigate('/dashboard')}>
             Cancel
           </button>

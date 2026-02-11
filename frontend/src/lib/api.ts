@@ -84,6 +84,16 @@ export async function deleteNewsletter(id: string): Promise<void> {
   return apiDelete(`/api/me/newsletters/${id}`);
 }
 
+export async function sendNewsletterSample(id: string): Promise<{ sent: boolean }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/me/newsletters/${id}/send-sample`, {
+    method: 'POST',
+    headers,
+  });
+  if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+  return res.json();
+}
+
 export type ApprovalStatus = { approved: boolean };
 
 export async function getApprovalStatus(): Promise<ApprovalStatus> {
