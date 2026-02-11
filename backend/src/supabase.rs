@@ -378,6 +378,32 @@ impl SupabaseClient {
             .map(|r| r.status().is_success())
             .unwrap_or(false)
     }
+
+    /// True if user_id exists in approved_users (backend uses service role, so RLS is bypassed).
+    pub async fn is_user_approved(&self, user_id: Uuid) -> Result<bool, String> {
+        let url = format!(
+            "{}?user_id=eq.{}&select=user_id",
+            self.rest_url("approved_users"),
+            user_id
+        );
+        let res = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !res.status().is_success() {
+            return Err(format!("approved_users lookup: {}", res.status()));
+        }
+        #[derive(Deserialize)]
+        struct Row {
+            #[allow(dead_code)]
+            user_id: Uuid,
+        }
+        let rows: Vec<Row> = res.json().await.map_err(|e| e.to_string())?;
+        Ok(!rows.is_empty())
+    }
 }
 
 fn parse_time(s: Option<&str>) -> Option<NaiveTime> {

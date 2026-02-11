@@ -83,3 +83,9 @@ export async function updateNewsletter(id: string, body: CreateNewsletterBody): 
 export async function deleteNewsletter(id: string): Promise<void> {
   return apiDelete(`/api/me/newsletters/${id}`);
 }
+
+export type ApprovalStatus = { approved: boolean };
+
+export async function getApprovalStatus(): Promise<ApprovalStatus> {
+  return apiGet<ApprovalStatus>('/api/me/approval-status');
+}

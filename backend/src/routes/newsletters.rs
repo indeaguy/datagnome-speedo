@@ -3,12 +3,24 @@ use rocket::serde::json::Json;
 use rocket::State;
 use uuid::Uuid;
 
-use crate::auth::User;
+use crate::auth::{ApprovedUser, User};
 use crate::models::{CreateNewsletterConfig, UpdateNewsletterConfig};
 use crate::supabase::SupabaseClient;
 
+#[rocket::get("/me/approval-status")]
+pub async fn approval_status(
+    user: User,
+    supabase: &State<SupabaseClient>,
+) -> Result<Json<serde_json::Value>, Status> {
+    let approved = supabase
+        .is_user_approved(user.0.user_id)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+    Ok(Json(serde_json::json!({ "approved": approved })))
+}
+
 #[rocket::get("/me/newsletters")]
-pub async fn list(user: User, supabase: &State<SupabaseClient>) -> Result<Json<Vec<serde_json::Value>>, Status> {
+pub async fn list(user: ApprovedUser, supabase: &State<SupabaseClient>) -> Result<Json<Vec<serde_json::Value>>, Status> {
     let configs = supabase
         .list_newsletters_by_user(user.0.user_id)
         .await
@@ -19,7 +31,7 @@ pub async fn list(user: User, supabase: &State<SupabaseClient>) -> Result<Json<V
 
 #[rocket::post("/me/newsletters", data = "<body>")]
 pub async fn create(
-    user: User,
+    user: ApprovedUser,
     supabase: &State<SupabaseClient>,
     body: Json<CreateNewsletterConfig>,
 ) -> Result<Json<serde_json::Value>, Status> {
@@ -36,7 +48,7 @@ pub async fn create(
 }
 
 #[rocket::get("/me/newsletters/<id>")]
-pub async fn get(user: User, supabase: &State<SupabaseClient>, id: &str) -> Result<Json<serde_json::Value>, Status> {
+pub async fn get(user: ApprovedUser, supabase: &State<SupabaseClient>, id: &str) -> Result<Json<serde_json::Value>, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::BadRequest)?;
     let config = supabase
         .get_newsletter_by_id(id, user.0.user_id)
@@ -48,7 +60,7 @@ pub async fn get(user: User, supabase: &State<SupabaseClient>, id: &str) -> Resu
 
 #[rocket::put("/me/newsletters/<id>", data = "<body>")]
 pub async fn update(
-    user: User,
+    user: ApprovedUser,
     supabase: &State<SupabaseClient>,
     id: &str,
     body: Json<UpdateNewsletterConfig>,
@@ -63,7 +75,7 @@ pub async fn update(
 }
 
 #[rocket::delete("/me/newsletters/<id>")]
-pub async fn delete(user: User, supabase: &State<SupabaseClient>, id: &str) -> Result<Status, Status> {
+pub async fn delete(user: ApprovedUser, supabase: &State<SupabaseClient>, id: &str) -> Result<Status, Status> {
     let id = Uuid::parse_str(id).map_err(|_| Status::BadRequest)?;
     let ok = supabase
         .delete_newsletter(id, user.0.user_id)

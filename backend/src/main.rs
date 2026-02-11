@@ -73,6 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api",
             rocket::routes![
                 routes::health::health,
+                routes::newsletters::approval_status,
                 routes::newsletters::list,
                 routes::newsletters::create,
                 routes::newsletters::get,

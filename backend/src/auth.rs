@@ -1,5 +1,5 @@
 use jsonwebtoken::jwk::JwkSet;
-use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
 use rocket::request::Outcome;
 use rocket::request::{FromRequest, Request};
 use rocket::serde::{Deserialize, Serialize};
@@ -207,5 +207,31 @@ impl<'r> FromRequest<'r> for User {
             user_id,
             email: token_data.claims.email,
         }))
+    }
+}
+
+/// Authenticated user that is also in approved_users. Use for newsletter routes.
+pub struct ApprovedUser(pub UserContext);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for ApprovedUser {
+    type Error = ();
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let user = req.guard::<User>().await;
+        let user = match user {
+            Outcome::Success(u) => u,
+            Outcome::Error(e) => return Outcome::Error(e),
+            Outcome::Forward(f) => return Outcome::Forward(f),
+        };
+        let supabase = match req.rocket().state::<crate::supabase::SupabaseClient>() {
+            Some(s) => s,
+            None => return Outcome::Error((rocket::http::Status::InternalServerError, ())),
+        };
+        match supabase.is_user_approved(user.0.user_id).await {
+            Ok(true) => Outcome::Success(ApprovedUser(user.0)),
+            Ok(false) => Outcome::Error((rocket::http::Status::Forbidden, ())),
+            Err(_) => Outcome::Error((rocket::http::Status::InternalServerError, ())),
+        }
     }
 }

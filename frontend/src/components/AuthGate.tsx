@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
+import { getApprovalStatus } from '../lib/api';
 import { Link, useNavigate } from 'react-router-dom';
 
 type AuthGateProps = {
@@ -11,6 +12,7 @@ type AuthGateProps = {
 export function AuthGate({ children }: AuthGateProps) {
   const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
+  const [approved, setApproved] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,9 +28,20 @@ export function AuthGate({ children }: AuthGateProps) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setApproved(null);
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session) {
+      setApproved(null);
+      return;
+    }
+    getApprovalStatus()
+      .then(({ approved: a }) => setApproved(a))
+      .catch(() => setApproved(false));
+  }, [session]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,8 +81,8 @@ export function AuthGate({ children }: AuthGateProps) {
   if (!session) {
     return (
       <div className="auth-page">
-        <h1>Speedo</h1>
-        <p>Sign in to manage your daily newsletters.</p>
+        <h1>Speedo.email</h1>
+        <p>A personalized executive summary <br /> of all the daily info you need to run your busines. <br /> in an email newsletter.</p>
         <form onSubmit={handleSubmit} className="auth-form">
           <input
             type="email"
@@ -92,6 +105,35 @@ export function AuthGate({ children }: AuthGateProps) {
           </button>
         </form>
       </div>
+    );
+  }
+
+  if (approved === null) {
+    return (
+      <div className="auth-loading">
+        <p>Loading…</p>
+      </div>
+    );
+  }
+
+  if (!approved) {
+    return (
+      <>
+        <header className="app-header">
+          <span className="user-email">{session.user?.email}</span>
+          <button type="button" onClick={handleSignOut} className="sign-out">
+            Sign out
+          </button>
+        </header>
+        <main className="app-main">
+          <div className="auth-page">
+            <h1>Thanks for registering</h1>
+            <p>
+              In order to keep costs down for now, only manually approved users get access. Standby—we&apos;ll enable your account soon.
+            </p>
+          </div>
+        </main>
+      </>
     );
   }
 
