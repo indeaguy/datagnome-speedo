@@ -31,6 +31,9 @@ export function Dashboard() {
   return (
     <div className="dashboard">
       <h1>Your newsletters</h1>
+      <p className="dashboard-intro">
+        Our AI agent will securely and discreetly do the necessary research and send a tailored report by email on the requested schedule. <br /> Enjoy!
+      </p>
       {configs.length === 0 ? (
         <p>No newsletters yet. <Link to="/newsletters/new">Create one</Link>.</p>
       ) : (
@@ -39,8 +42,9 @@ export function Dashboard() {
             <li key={c.id} className="newsletter-item">
               <Link to={`/newsletters/${c.id}/edit`}>
                 <strong>{c.title || 'Untitled'}</strong>
-                <span> {c.delivery_email}</span>
-                <span> {c.is_active ? 'Active' : 'Paused'}</span>
+                <span className={`status-badge ${c.is_active ? 'status-active' : 'status-paused'}`}>
+                  {c.is_active ? 'Active' : 'Paused'}
+                </span>
               </Link>
               <button
                 type="button"

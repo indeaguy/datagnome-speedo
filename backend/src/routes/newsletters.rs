@@ -105,16 +105,23 @@ pub async fn send_sample(
     client: &State<reqwest::Client>,
     id: &str,
 ) -> Result<Json<serde_json::Value>, (Status, String)> {
+    eprintln!("[send-sample] POST id={}", id);
     let id = Uuid::parse_str(id).map_err(|_| (Status::BadRequest, "Invalid newsletter id".into()))?;
     let config = supabase
         .get_newsletter_by_id(id, user.0.user_id)
         .await
-        .map_err(|e| (Status::InternalServerError, e))?
+        .map_err(|e| {
+            eprintln!("[send-sample] get_newsletter_by_id failed: {}", e);
+            (Status::InternalServerError, e)
+        })?
         .ok_or((Status::NotFound, "Newsletter not found".into()))?;
 
     let body = openclaw_client::generate_newsletter(client.inner(), openclaw.inner(), &config)
         .await
-        .map_err(|e| (Status::UnprocessableEntity, e))?;
+        .map_err(|e| {
+            eprintln!("[send-sample] generate_newsletter failed: {}", e);
+            (Status::UnprocessableEntity, e)
+        })?;
 
     let subject = format!("{} – Sample – {}", config.title, Utc::now().format("%Y-%m-%d %H:%M"));
     email::send_newsletter(
@@ -124,7 +131,11 @@ pub async fn send_sample(
         &body,
     )
     .await
-    .map_err(|e| (Status::InternalServerError, e))?;
+    .map_err(|e| {
+        eprintln!("[send-sample] send_newsletter failed: {}", e);
+        (Status::InternalServerError, e)
+    })?;
 
+    eprintln!("[send-sample] sent to {}", config.delivery_email);
     Ok(Json(serde_json::json!({ "sent": true })))
 }
