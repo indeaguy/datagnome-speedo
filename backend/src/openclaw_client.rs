@@ -53,11 +53,23 @@ pub async fn generate_newsletter(
             arr.iter()
                 .find(|i| i.get("type").and_then(|t| t.as_str()) == Some("message"))
         })
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str())
-        .unwrap_or("")
-        .to_string();
-    Ok(output)
+        .and_then(|m| m.get("content"));
+    let text = match output {
+        Some(Value::Array(content_parts)) => content_parts
+            .iter()
+            .filter_map(|p| {
+                if p.get("type").and_then(|t| t.as_str()) == Some("output_text") {
+                    p.get("text").and_then(|t| t.as_str()).map(String::from)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    Ok(text)
 }
 
 fn build_prompt(config: &NewsletterConfig) -> String {
