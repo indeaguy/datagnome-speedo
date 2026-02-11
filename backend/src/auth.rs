@@ -1,5 +1,5 @@
 use jsonwebtoken::jwk::JwkSet;
-use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
+use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
 use rocket::request::Outcome;
 use rocket::request::{FromRequest, Request};
 use rocket::serde::{Deserialize, Serialize};
@@ -179,7 +179,8 @@ impl<'r> FromRequest<'r> for User {
                         return Outcome::Error((rocket::http::Status::Unauthorized, ()));
                     }
                 };
-                let mut validation = Validation::default();
+                // Use the algorithm from the token header (Supabase uses ES256 with JWKS).
+                let mut validation = Validation::new(header.alg);
                 validation.validate_exp = true;
                 validation.set_issuer(&[issuer]);
                 if let Some(ref aud) = audience {

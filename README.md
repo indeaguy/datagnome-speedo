@@ -307,7 +307,7 @@ Use this when you serve the frontend as static files (e.g. upload via SFTP/FTP t
 3. **nginx**
    - **api.speedo.email**: server block with `server_name api.speedo.email`; `location /` → `proxy_pass http://127.0.0.1:8080;` (plus `proxy_set_header Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`).
    - **speedo.email**: server block with `server_name speedo.email www.speedo.email`; `root /var/www/speedo` (or wherever you upload the frontend); `location /` → `try_files $uri $uri/ /index.html;` for SPA routing.
-   - Run `certbot --nginx -d speedo.email -d api.speedo.email` for HTTPS.
+   - Run `certbot --nginx -d speedo.email -d api.speedo.email` for HTTPS. Prefer forcing HTTPS: redirect HTTP to HTTPS (certbot often adds this), so all traffic uses TLS.
 
 4. **Frontend build and upload**
    - Build with `VITE_API_BASE_URL=https://api.speedo.email`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. Upload the contents of `frontend/dist` to the web root (e.g. `/var/www/speedo`) via SFTP (prefer over plain FTP).
@@ -333,7 +333,7 @@ Use this when you serve the frontend as static files (e.g. upload via SFTP/FTP t
    - `curl -s http://localhost:8080/api/health` should return `{"status":"ok"}` (or `db_error` if DB is down).
 
 6. **Reverse proxy and HTTPS**
-   - Install nginx. Add a server block: `server_name yourdomain.com`; `location /` → `proxy_pass http://127.0.0.1:3000;`; `location /api/` → `proxy_pass http://127.0.0.1:8080/api/;` (with `proxy_set_header Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`). Enable the site, run `certbot --nginx -d yourdomain.com`. Set `VITE_API_BASE_URL=https://yourdomain.com`, rebuild frontend (`docker compose up -d --build frontend`), and add the same URL to Supabase redirect URLs.
+   - Install nginx. Add a server block: `server_name yourdomain.com`; `location /` → `proxy_pass http://127.0.0.1:3000;`; `location /api/` → `proxy_pass http://127.0.0.1:8080/api/;` (with `proxy_set_header Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`). Enable the site, run `certbot --nginx -d yourdomain.com`. Force HTTPS (redirect HTTP → HTTPS; certbot usually configures this). Set `VITE_API_BASE_URL=https://yourdomain.com`, rebuild frontend (`docker compose up -d --build frontend`), and add the same URL to Supabase redirect URLs.
 
 7. **Start on boot**
    - systemd: create a unit with `WorkingDirectory=/opt/speedo`, `ExecStart=/usr/bin/docker compose up -d`, `ExecStop=/usr/bin/docker compose down`, then `systemctl enable speedo`. Or cron: `@reboot cd /opt/speedo && docker compose up -d`.
