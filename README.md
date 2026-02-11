@@ -257,6 +257,7 @@ You can run Speedo (auth, config CRUD, UI) with OpenClaw env vars **unset or emp
 | `OPENCLAW_GATEWAY_TOKEN` | Backend | Token for `gateway.auth.token`. |
 | `OPENCLAW_AGENT_ID` | Backend | Agent id, e.g. `main`. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Backend | SMTP for sending newsletters. |
+| `SMTP_TLS_SKIP_VERIFY` | Backend | Optional. Set to `1`, `true`, or `yes` to accept TLS certs with hostname mismatch (e.g. SMTP_HOST is an IP or differs from the server certificate). |
 | `CORS_ORIGINS` | Backend | When frontend is on a different origin (e.g. API at api.speedo.email), set to the frontend origin, e.g. `https://speedo.email`. Comma-separated for multiple. Default `*`. |
 | `VITE_SUPABASE_URL` | Frontend build | Supabase project URL. |
 | `VITE_SUPABASE_ANON_KEY` | Frontend build | Supabase anon key. |

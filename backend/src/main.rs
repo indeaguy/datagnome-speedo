@@ -39,12 +39,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smtp_user = std::env::var("SMTP_USER").unwrap_or_else(|_| String::new());
     let smtp_pass = std::env::var("SMTP_PASS").unwrap_or_else(|_| String::new());
     let smtp_from = std::env::var("SMTP_FROM").unwrap_or_else(|_| String::new());
+    let smtp_tls_skip = matches!(
+        std::env::var("SMTP_TLS_SKIP_VERIFY").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes")
+    );
     let email_config = email::EmailConfig {
         smtp_host,
         smtp_port,
         smtp_user,
         smtp_pass,
         from_address: smtp_from,
+        tls_skip_verify: smtp_tls_skip,
     };
 
     scheduler::run_scheduler(supabase.clone(), openclaw_config.clone(), email_config.clone());
