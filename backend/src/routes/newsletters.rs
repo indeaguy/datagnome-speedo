@@ -91,6 +91,11 @@ pub async fn delete(user: ApprovedUser, supabase: &State<SupabaseClient>, id: &s
     }
 }
 
+#[rocket::options("/me/newsletters/<_id>/send-sample")]
+pub fn send_sample_options(_id: &str) -> Status {
+    Status::NoContent
+}
+
 #[rocket::post("/me/newsletters/<id>/send-sample")]
 pub async fn send_sample(
     user: ApprovedUser,

@@ -83,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 routes::newsletters::get,
                 routes::newsletters::update,
                 routes::newsletters::delete,
+                routes::newsletters::send_sample_options,
                 routes::newsletters::send_sample,
             ],
         )
