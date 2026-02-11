@@ -126,7 +126,7 @@ export function EditNewsletter() {
     setError(null);
     setSendingSample(true);
     try {
-      await sendNewsletterSample(id);
+      await sendNewsletterSample(id, form);
       setError(null);
       alert('Sample sent to ' + (form.delivery_email || 'your delivery email') + '.');
     } catch (err) {

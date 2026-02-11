@@ -84,11 +84,15 @@ export async function deleteNewsletter(id: string): Promise<void> {
   return apiDelete(`/api/me/newsletters/${id}`);
 }
 
-export async function sendNewsletterSample(id: string): Promise<{ sent: boolean }> {
+export async function sendNewsletterSample(
+  id: string,
+  body?: CreateNewsletterBody,
+): Promise<{ sent: boolean }> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/me/newsletters/${id}/send-sample`, {
     method: 'POST',
     headers,
+    body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
   return res.json();

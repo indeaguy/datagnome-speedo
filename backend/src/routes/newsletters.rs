@@ -96,7 +96,7 @@ pub fn send_sample_options(_id: &str) -> Status {
     Status::NoContent
 }
 
-#[rocket::post("/me/newsletters/<id>/send-sample")]
+#[rocket::post("/me/newsletters/<id>/send-sample", data = "<overlay>")]
 pub async fn send_sample(
     user: ApprovedUser,
     supabase: &State<SupabaseClient>,
@@ -104,10 +104,11 @@ pub async fn send_sample(
     email_config: &State<EmailConfig>,
     client: &State<reqwest::Client>,
     id: &str,
+    overlay: Option<Json<UpdateNewsletterConfig>>,
 ) -> Result<Json<serde_json::Value>, (Status, String)> {
     eprintln!("[send-sample] POST id={}", id);
     let id = Uuid::parse_str(id).map_err(|_| (Status::BadRequest, "Invalid newsletter id".into()))?;
-    let config = supabase
+    let mut config = supabase
         .get_newsletter_by_id(id, user.0.user_id)
         .await
         .map_err(|e| {
@@ -116,6 +117,27 @@ pub async fn send_sample(
         })?
         .ok_or((Status::NotFound, "Newsletter not found".into()))?;
 
+    if let Some(ref body) = overlay {
+        if let Some(t) = body.title.as_ref() {
+            config.title = t.clone();
+        }
+        if let Some(t) = body.topics.as_ref() {
+            config.topics = t.clone();
+        }
+        if let Some(t) = body.tone.as_ref() {
+            config.tone = t.clone();
+        }
+        if let Some(l) = body.length.as_ref() {
+            config.length = l.clone();
+        }
+        if let Some(e) = body.delivery_email.as_ref() {
+            config.delivery_email = e.clone();
+        }
+        if let Some(f) = body.features.as_ref() {
+            config.features = f.clone();
+        }
+    }
+
     let body = openclaw_client::generate_newsletter(client.inner(), openclaw.inner(), &config)
         .await
         .map_err(|e| {
@@ -123,12 +145,21 @@ pub async fn send_sample(
             (Status::UnprocessableEntity, e)
         })?;
 
+    let body = body.trim();
+    if body.is_empty() {
+        eprintln!("[send-sample] OpenClaw returned empty content");
+        return Err((
+            Status::UnprocessableEntity,
+            "OpenClaw did not return any content. Check the agent and gateway.".into(),
+        ));
+    }
+
     let subject = format!("{} – Sample – {}", config.title, Utc::now().format("%Y-%m-%d %H:%M"));
     email::send_newsletter(
         email_config.inner(),
         &config.delivery_email,
         &subject,
-        &body,
+        body,
     )
     .await
     .map_err(|e| {
