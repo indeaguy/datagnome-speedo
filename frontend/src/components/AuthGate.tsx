@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
 import { getApprovalStatus } from '../lib/api';
 import { Link, useNavigate } from 'react-router-dom';
+import logo from '@assets/logos/speedologo.svg';
 
 type AuthGateProps = {
   children: ReactNode;
@@ -81,8 +82,13 @@ export function AuthGate({ children }: AuthGateProps) {
   if (!session) {
     return (
       <div className="auth-page">
-        <h1>Speedo.email</h1>
-        <p>A personalized executive summary <br /> of all the daily info you need to run your busines. <br /> in an email newsletter.</p>
+        <img src={logo} alt="Speedo" className="auth-logo" />
+        <h1>speedo.email</h1>
+        <div className="auth-tagline">
+          <span>A personalized executive summary</span>
+          <span>of info needed to run your business daily</span>
+          <span>in an email newsletter.</span>
+        </div>
         <form onSubmit={handleSubmit} className="auth-form">
           <input
             type="email"

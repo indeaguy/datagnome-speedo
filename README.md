@@ -6,7 +6,7 @@ Multi-user daily newsletter app: users sign in (Supabase), configure a newslette
 
 - **Frontend**: React (Vite + TypeScript), Supabase Auth, React Router.
 - **Backend**: Rust (Rocket 0.5), Supabase REST API (HTTPS only), JWT auth, reqwest (OpenClaw), lettre (SMTP).
-- **Data**: Supabase (Auth + Postgres). Tables: `newsletter_config`, `newsletter_run_log`; backend talks to them via the auto-generated REST API (no direct DB connection).
+- **Data**: Supabase (Auth + Postgres). Tables: `newsletter_config`, `newsletter_run_log`, `approved_users`; backend talks to them via the auto-generated REST API (no direct DB connection).
 - **Deploy**: Docker (backend + frontend) and optional nginx + HTTPS on a VPS.
 
 We do **not** assume you already have OpenClaw. You need to install and run an OpenClaw Gateway separately so the backend can call it to generate newsletter content. Until then, you can run Speedo for auth and CRUD; the scheduler will log errors when it tries to generate (or you can leave OpenClaw env vars unset and only test the API + UI).
@@ -39,10 +39,13 @@ See **AGENTS.md** for how the backend uses OpenClaw (headers, prompt shape). See
    - From repo root: `cd frontend && npm install && npm run dev`. Open the URL shown (e.g. http://localhost:5173).
 
 3. **Database**
-   - Apply the migration in `backend/migrations/` to your Supabase project (e.g. via Supabase Dashboard SQL or MCP). The plan used a migration named `create_newsletter_config_and_run_log`.
+   - Apply the migrations in `backend/migrations/` to your Supabase project (e.g. via Supabase Dashboard SQL or MCP): `create_newsletter_config_and_run_log`, then `add_approved_users`.
 
 4. **Auth (optional)**  
    To allow sign-in without confirming email (e.g. no SMTP or you want to skip confirmation): in the [Supabase Dashboard](https://supabase.com/dashboard) open your project → **Authentication** → **Providers** → **Email**. Turn off **Confirm email**. Users can then sign in immediately after sign-up. (If you leave it on, users get "Email not confirmed" until they click the link in the confirmation email.)
+
+5. **Approved users**  
+   New users see a “Thanks for registering… only manually approved users get access. Standby!” message until they are approved. Approve a user by inserting their auth user id into `approved_users`: in Supabase Dashboard → **Table Editor** → **approved_users** → **Insert row** and set `user_id` to the user’s UUID (from **Authentication** → **Users** → copy the UID). To revoke access, delete that row.
 
 ## Setting up OpenClaw
 
@@ -293,6 +296,90 @@ Use this to test with the backend at `http://142.44.145.173:8080` and the fronte
 
 **Check:** `curl -s http://142.44.145.173:8080/api/health` should return `{"status":"ok"}` or `{"status":"db_error"}`.
 
+### Deployment: Ubuntu + Apache (step-by-step)
+
+Use this on a plain Ubuntu VPS with Apache (no Plesk). One domain for the app, one subdomain for the API.
+
+**1. DNS**  
+Point `speedo.email` and `api.speedo.email` to your VPS IP (A records).
+
+**2. Backend on the VPS**
+
+- SSH in. Install Rust and deps:  
+  `sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev`  
+  then `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y` and `source $HOME/.cargo/env`.
+- Clone and build:  
+  `git clone <your-repo> /opt/speedo && cd /opt/speedo`  
+  `cargo build --release --manifest-path backend/Cargo.toml`
+- Create `/opt/speedo/.env` with: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_AUDIENCE`, `CORS_ORIGINS=https://speedo.email`, plus SMTP/OpenClaw if you use them. Do **not** set `SUPABASE_JWT_SECRET` (backend uses JWKS).
+- Run the backend so it listens on 8080:  
+  `ROCKET_ADDRESS=0.0.0.0 ROCKET_PORT=8080 ./backend/target/release/speedo-backend`  
+  (Use systemd or screen/tmux so it keeps running. Allow port 8080 in firewall if needed: `sudo ufw allow 8080`.)
+
+**3. Apache: proxy + static site**
+
+- Install Apache and enable modules:  
+  `sudo apt install -y apache2`  
+  `sudo a2enmod proxy proxy_http headers rewrite ssl`
+- Create a config for Speedo:  
+  `sudo nano /etc/apache2/sites-available/speedo.conf`  
+  Paste the following (replace `speedo.email` / `api.speedo.email` if your domains differ):
+
+```apache
+# API subdomain -> backend
+<VirtualHost *:80>
+    ServerName api.speedo.email
+    ProxyPreserveHost On
+    ProxyPass / http://127.0.0.1:8080/
+    ProxyPassReverse / http://127.0.0.1:8080/
+    RequestHeader set X-Forwarded-Proto "http"
+</VirtualHost>
+
+# Main domain -> frontend files (we'll add SSL and path in step 4)
+<VirtualHost *:80>
+    ServerName speedo.email
+    DocumentRoot /var/www/speedo
+    <Directory /var/www/speedo>
+        Options -Indexes +FollowSymLinks
+        AllowOverride None
+        Require all granted
+        FallbackResource /index.html
+    </Directory>
+</VirtualHost>
+```
+
+- Create docroot and enable site:  
+  `sudo mkdir -p /var/www/speedo`  
+  `sudo a2ensite speedo.conf`  
+  `sudo systemctl reload apache2`
+
+**4. HTTPS with Certbot**
+
+- `sudo apt install -y certbot python3-certbot-apache`  
+  `sudo certbot --apache -d speedo.email -d api.speedo.email`  
+  Choose redirect HTTP→HTTPS when asked.
+- Certbot will add SSL and redirect. Ensure `X-Forwarded-Proto` is `https` for the API:  
+  `sudo nano /etc/apache2/sites-available/speedo-le-ssl.conf`  
+  In the `api.speedo.email` block (inside the `<VirtualHost *:443>` that certbot added), add if missing:  
+  `RequestHeader set X-Forwarded-Proto "https"`  
+  Then `sudo systemctl reload apache2`.
+
+**5. Frontend build and upload**
+
+- On your machine, in the repo: set in `.env`:  
+  `VITE_API_BASE_URL=https://api.speedo.email`  
+  `VITE_SUPABASE_URL=...`  
+  `VITE_SUPABASE_ANON_KEY=...`
+- Build: `cd frontend && npm run build`.
+- Upload the contents of `frontend/dist/` to the VPS at `/var/www/speedo/` (e.g. `scp -r frontend/dist/* user@your-vps:/var/www/speedo/` or SFTP).
+
+**6. Supabase**  
+In Supabase Dashboard → Authentication → URL Configuration, add `https://speedo.email` to Redirect URLs.
+
+**Check:**  
+- `https://api.speedo.email/api/health` → `{"status":"ok"}` or `{"status":"db_error"}`.  
+- Open `https://speedo.email` and sign in.
+
 ### Option A: Split deployment (frontend on web host, backend on subdomain)
 
 Use this when you serve the frontend as static files (e.g. upload via SFTP/FTP to the web server) and run the backend on a subdomain (e.g. `api.speedo.email`). Ubuntu 24.04 is fine.
@@ -304,13 +391,17 @@ Use this when you serve the frontend as static files (e.g. upload via SFTP/FTP t
 2. **Backend on the VPS**
    - Install Rust (or build the backend binary elsewhere and copy it). Clone the repo, create `.env` with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_AUDIENCE`, SMTP, OpenClaw vars, and **`CORS_ORIGINS=https://speedo.email`** (so the frontend origin can call the API). Run the backend (e.g. `cargo run --release` or run the built binary) listening on a port (e.g. 8080). Run it under systemd so it survives reboots.
 
-3. **nginx**
-   - **api.speedo.email**: server block with `server_name api.speedo.email`; `location /` → `proxy_pass http://127.0.0.1:8080;` (plus `proxy_set_header Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`).
-   - **speedo.email**: server block with `server_name speedo.email www.speedo.email`; `root /var/www/speedo` (or wherever you upload the frontend); `location /` → `try_files $uri $uri/ /index.html;` for SPA routing.
-   - Run `certbot --nginx -d speedo.email -d api.speedo.email` for HTTPS. Prefer forcing HTTPS: redirect HTTP to HTTPS (certbot often adds this), so all traffic uses TLS.
+3. **Reverse proxy and HTTPS**
+   - If you manage nginx yourself: add server blocks (e.g. in `/etc/nginx/sites-available/speedo`) for **api.speedo.email** (`proxy_pass http://127.0.0.1:8080`; set `Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`) and **speedo.email** (`root` to frontend files; `try_files $uri $uri/ /index.html`). Run `certbot --nginx -d speedo.email -d api.speedo.email` and ensure HTTP redirects to HTTPS.
+   - If your host uses **Plesk** (e.g. Websavers): configure the proxy, SSL, and “Always use HTTPS” / redirect HTTP→HTTPS in the Plesk panel for `speedo.email` and `api.speedo.email` instead of editing nginx files directly.
 
 4. **Frontend build and upload**
    - Build with `VITE_API_BASE_URL=https://api.speedo.email`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. Upload the contents of `frontend/dist` to the web root (e.g. `/var/www/speedo`) via SFTP (prefer over plain FTP).
+
+   **FTP upload to a shared host (e.g. document root `httpdocs`):**
+   - **Build:** From repo root, set env for production (e.g. `VITE_API_BASE_URL=https://api.yourdomain.com`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`), then `cd frontend && npm run build`. Output is in `frontend/dist/`.
+   - **Upload:** Upload the *contents* of `frontend/dist/` (e.g. `index.html` and `assets/`) into the host’s document root. On many shared hosts this is the `httpdocs` folder in your account (often the same as `~/httpdocs` after login).
+   - **FTP/SFTP details:** Use the credentials from your host (e.g. username `zbpthsky`, host `167.114.107.144`). If the account has no password, set one in the host’s control panel (cPanel, Plesk, or similar) under “FTP accounts” or “Change password” so you can log in. Prefer SFTP (port 22) if the host supports it; otherwise use FTP (port 21) with a client (FileZilla, Cyberduck, or CLI: `lftp`, `ncftpput`).
 
 5. **Supabase**
    - In Supabase Auth redirect URLs, add `https://speedo.email` (and `https://speedo.email/**` if required).
