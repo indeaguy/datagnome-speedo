@@ -29,12 +29,18 @@ pub async fn send_newsletter(
         config.smtp_user.clone(),
         config.smtp_pass.clone(),
     );
-    let mailer: AsyncSmtpTransport<Tokio1Executor> =
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
+    let mailer: AsyncSmtpTransport<Tokio1Executor> = match config.smtp_port {
+        465 => AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
             .map_err(|e| e.to_string())?
             .port(config.smtp_port)
             .credentials(creds)
-            .build();
+            .build(),
+        _ => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
+            .map_err(|e| e.to_string())?
+            .port(config.smtp_port)
+            .credentials(creds)
+            .build(),
+    };
 
     mailer.send(email).await.map_err(|e| e.to_string())?;
     Ok(())
