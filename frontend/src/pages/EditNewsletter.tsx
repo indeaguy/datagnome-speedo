@@ -12,18 +12,21 @@ import { DEFAULT_FEATURES } from '../types';
 
 const TONES = ['neutral', 'playful', 'serious', 'professional'];
 const LENGTHS = ['short', 'medium', 'long'];
-const FEATURE_KEYS = ['competitor_analysis', 'market_segment_summary', 'identify_risks'] as const;
+const FEATURE_KEYS = ['kpis', 'competitor_analysis', 'market_segment_summary', 'identify_risks'] as const;
 const FEATURE_LABELS: Record<string, string> = {
+  kpis: 'KPIs',
   competitor_analysis: 'Competitor analysis',
   market_segment_summary: 'Market segment summary',
   identify_risks: 'Identify risks',
 };
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
+  kpis: 'Key performance indicators: metrics, trends, and how they compare to targets or prior period.',
   competitor_analysis: 'Summary of what competitors are doing and how they compare.',
   market_segment_summary: 'Overview of market segments, size, and how they are changing.',
   identify_risks: 'Risks and uncertainties that could affect your business or market.',
 };
 const FEATURE_PLACEHOLDERS: Record<string, string> = {
+  kpis: 'e.g. Revenue, conversion, churn; compare to last quarter and highlight outliers.',
   competitor_analysis: 'e.g. Focus on pricing moves and who\'s gaining share in EMEA.',
   market_segment_summary: 'e.g. Break out by enterprise vs SMB and call out growth rates.',
   identify_risks: 'e.g. Include regulatory and supply chain, rank by likelihood.',

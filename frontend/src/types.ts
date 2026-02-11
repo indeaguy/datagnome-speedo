@@ -20,6 +20,7 @@ export type NewsletterConfig = {
 };
 
 export const DEFAULT_FEATURES: Record<string, FeatureConfig> = {
+  kpis: { enabled: true, custom_request: '' },
   competitor_analysis: { enabled: false, custom_request: '' },
   market_segment_summary: { enabled: false, custom_request: '' },
   identify_risks: { enabled: false, custom_request: '' },

@@ -1,6 +1,6 @@
 # Speedo – Daily Newsletter
 
-Multi-user daily newsletter app: users sign in (Supabase), configure a newsletter via a web form, and receive a generated digest by email. The backend (Rocket) stores configs in Supabase Postgres, runs an in-process scheduler, calls an OpenClaw Gateway to generate content, and sends email via SMTP.
+Multi-user daily newsletter app: users sign in (Supabase), configure a newsletter via a web form, and receive a generated digest by email. From the edit page, approved users can send a one-off sample to the configured delivery email. The backend (Rocket) stores configs in Supabase Postgres, runs an in-process scheduler, calls an OpenClaw Gateway to generate content, and sends email via SMTP.
 
 ## Stack
 
