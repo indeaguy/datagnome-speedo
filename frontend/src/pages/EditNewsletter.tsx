@@ -10,8 +10,8 @@ import {
 import { supabase } from '../supabaseClient';
 import { DEFAULT_FEATURES } from '../types';
 
-const TONES = ['neutral', 'playful', 'serious', 'professional'];
-const LENGTHS = ['short', 'medium', 'long'];
+// const TONES = ['neutral', 'playful', 'serious', 'professional'];
+// const LENGTHS = ['short', 'medium', 'long'];
 const FEATURE_KEYS = ['kpis', 'competitor_analysis', 'market_segment_summary', 'identify_risks'] as const;
 const FEATURE_LABELS: Record<string, string> = {
   kpis: 'KPIs',
@@ -95,13 +95,13 @@ export function EditNewsletter() {
     });
   };
 
-  const handleTopicsChange = (value: string) => {
-    const topics = value
-      .split(/[,;]/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-    update({ topics });
-  };
+  // const handleTopicsChange = (value: string) => {
+  //   const topics = value
+  //     .split(/[,;]/)
+  //     .map((t) => t.trim())
+  //     .filter(Boolean);
+  //   update({ topics });
+  // };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
