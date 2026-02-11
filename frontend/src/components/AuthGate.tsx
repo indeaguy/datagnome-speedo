@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 type AuthGateProps = {
   children: ReactNode;
 };
 
 export function AuthGate({ children }: AuthGateProps) {
+  const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');
@@ -34,14 +35,21 @@ export function AuthGate({ children }: AuthGateProps) {
     setAuthError(null);
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        if (data.session) navigate('/newsletters/new', { replace: true });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (data.session) navigate('/newsletters/new', { replace: true });
       }
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Auth failed');
+      const message = err instanceof Error ? err.message : 'Auth failed';
+      if (isSignUp && message === 'Database error saving new user') {
+        setAuthError('An account with this email may already exist. Try signing in instead.');
+      } else {
+        setAuthError(message);
+      }
     }
   };
 

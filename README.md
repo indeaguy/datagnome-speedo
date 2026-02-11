@@ -11,6 +11,23 @@ Multi-user daily newsletter app: users sign in (Supabase), configure a newslette
 
 We do **not** assume you already have OpenClaw. You need to install and run an OpenClaw Gateway separately so the backend can call it to generate newsletter content. Until then, you can run Speedo for auth and CRUD; the scheduler will log errors when it tries to generate (or you can leave OpenClaw env vars unset and only test the API + UI).
 
+### Next steps: OpenClaw (handoff for next agent)
+
+Speedo is deployable without OpenClaw (backend, Supabase REST, Apache proxy, health check all work). To enable **newsletter generation** (scheduler calling the LLM and sending email):
+
+1. **Install and run OpenClaw** (see [Setting up OpenClaw](#setting-up-openclaw) below for full steps). On the same VPS as Speedo or on another host. You can install OpenClaw on the host or run it [via Docker](#openclaw-via-docker-on-the-vps) on the VPS.
+2. **In OpenClaw config** (`~/.openclaw/openclaw.json` or `$OPENCLAW_CONFIG_PATH`):
+   - `gateway.http.endpoints.responses.enabled: true` (so `POST /v1/responses` is available).
+   - `gateway.auth.mode: "token"` and `gateway.auth.token: "<secret>"`.
+   - At least one agent (e.g. `main`) with model auth (Anthropic/OpenAI etc.) so it can generate text.
+3. **In Speedo `.env`** (project root, and on VPS if backend runs there):
+   - `OPENCLAW_GATEWAY_URL` = base URL of the gateway + `/v1/responses` (e.g. `http://127.0.0.1:18789/v1/responses` local, or `http://host:18789/v1/responses` if gateway is on another host).
+   - `OPENCLAW_GATEWAY_TOKEN` = same value as `gateway.auth.token` in OpenClaw.
+   - `OPENCLAW_AGENT_ID` = agent id (e.g. `main`).
+4. **Start the OpenClaw gateway** (e.g. `openclaw gateway` or via daemon, or `docker compose up -d openclaw-gateway` if using Docker) and restart the Speedo backend so it picks up the env. The scheduler will then call OpenClaw when a newsletter is due; without these vars set, generation is skipped and the scheduler logs a clear error.
+
+See **AGENTS.md** for how the backend uses OpenClaw (headers, prompt shape). See **Setting up OpenClaw** below for local vs production (same-VPS vs separate host), firewall, and SMTP.
+
 ## Local development
 
 1. **Backend**
@@ -23,6 +40,9 @@ We do **not** assume you already have OpenClaw. You need to install and run an O
 
 3. **Database**
    - Apply the migration in `backend/migrations/` to your Supabase project (e.g. via Supabase Dashboard SQL or MCP). The plan used a migration named `create_newsletter_config_and_run_log`.
+
+4. **Auth (optional)**  
+   To allow sign-in without confirming email (e.g. no SMTP or you want to skip confirmation): in the [Supabase Dashboard](https://supabase.com/dashboard) open your project → **Authentication** → **Providers** → **Email**. Turn off **Confirm email**. Users can then sign in immediately after sign-up. (If you leave it on, users get "Email not confirmed" until they click the link in the confirmation email.)
 
 ## Setting up OpenClaw
 
@@ -182,9 +202,39 @@ You have two choices: run OpenClaw **on the same VPS** as Speedo (simplest), or 
    ```
 4. Restart the Speedo backend and test (e.g. trigger a newsletter run or wait for the scheduler).
 
-**Docker-only option (OpenClaw in Docker on the VPS)**
+**OpenClaw via Docker on the VPS**
 
-If you prefer everything in Docker: OpenClaw provides a [Docker install path](https://docs.clawd.bot/install/docker). You would run OpenClaw’s stack (e.g. `docker-setup.sh` from the OpenClaw repo) on the VPS so the OpenClaw gateway container is on the same Docker network as Speedo’s backend. Then set `OPENCLAW_GATEWAY_URL=http://openclaw-gateway:18789/v1/responses` (using the OpenClaw gateway service name and port from their compose file). This requires cloning or using OpenClaw’s Docker setup on the VPS; the exact service name and port are in their docs.
+You can run OpenClaw in Docker instead of installing it on the host. Speedo’s backend uses `network_mode: host`, so it reaches the gateway via the host’s localhost once the gateway’s port is published.
+
+1. **Clone and run OpenClaw’s Docker setup** (on the VPS):
+   ```bash
+   git clone https://github.com/openclaw/openclaw.git
+   cd openclaw
+   ./docker-setup.sh
+   ```
+   The script builds the image, runs the onboarding wizard (use API key for model auth; no browser on the server), writes a gateway token to OpenClaw’s `.env`, and starts the gateway. Config and workspace are on the host at `~/.openclaw/` and `~/.openclaw/workspace` (bind-mounted).
+
+2. **Enable the HTTP responses endpoint and token auth**  
+   Edit `~/.openclaw/openclaw.json` on the VPS. Ensure it has:
+   - `gateway.http.endpoints.responses.enabled: true`
+   - `gateway.auth.mode: "token"`
+   - `gateway.auth.token: "<same token as in openclaw's .env OPENCLAW_GATEWAY_TOKEN>"`
+   - `agents` with at least one agent (e.g. `id: "main"`) and `agents.defaults.workspace` set (see “What OpenClaw must have for Speedo” above).  
+   Restart the gateway so config is picked up: from the `openclaw` repo dir run `docker compose restart openclaw-gateway`.
+
+3. **Point Speedo at the gateway**  
+   In Speedo’s `.env` (project root on the VPS):
+   ```bash
+   OPENCLAW_GATEWAY_URL=http://127.0.0.1:18789/v1/responses
+   OPENCLAW_GATEWAY_TOKEN=<value of OPENCLAW_GATEWAY_TOKEN from openclaw repo .env>
+   OPENCLAW_AGENT_ID=main
+   ```
+   Restart the Speedo backend so it loads the new env.
+
+4. **Keep OpenClaw running**  
+   OpenClaw’s compose file uses `restart: unless-stopped` for `openclaw-gateway`. To start after a reboot, from the `openclaw` repo directory run `docker compose up -d openclaw-gateway` (or use a systemd unit that runs that).
+
+For a production-hardened Docker setup (bind gateway to 127.0.0.1 only, custom image), see OpenClaw’s [Hetzner (Docker VPS)](https://docs.clawd.bot/install/hetzner) guide; the Speedo `.env` values above still apply (backend on host network reaches gateway at `http://127.0.0.1:18789/v1/responses`).
 
 ---
 
@@ -290,7 +340,7 @@ Use this when you serve the frontend as static files (e.g. upload via SFTP/FTP t
 
 8. **Troubleshooting**
    - 502: check container ports and nginx `proxy_pass`.
-   - 401 on API: check `SUPABASE_JWT_SECRET` and `SUPABASE_JWT_AUDIENCE`; ensure frontend sends the Supabase access token.
+   - 401 on API: the backend logs a line like `[auth] 401: <reason>` (e.g. missing Bearer, JWKS fetch failed, JWT decode/validation failed). Ensure the **process that runs the API** (e.g. on the VPS) has no `SUPABASE_JWT_SECRET` set (or set it to the exact JWT secret from Supabase Dashboard → Project Settings → API) so the backend uses JWKS from `SUPABASE_URL`; set `SUPABASE_JWT_AUDIENCE=authenticated`; ensure the backend can reach `SUPABASE_URL` (e.g. `https://PROJECT_REF.supabase.co/auth/v1/.well-known/jwks.json`). Frontend must send the Supabase access token in `Authorization: Bearer <token>`.
    - Newsletter not sending: backend logs; verify OpenClaw URL and SMTP credentials.
    - DB/API errors: check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; ensure the backend can reach Supabase over HTTPS.
    - Wrong API in browser: rebuild frontend after changing `VITE_API_BASE_URL`.

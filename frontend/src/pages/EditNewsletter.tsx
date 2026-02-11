@@ -6,6 +6,7 @@ import {
   updateNewsletter,
   type CreateNewsletterBody,
 } from '../lib/api';
+import { supabase } from '../supabaseClient';
 import { DEFAULT_FEATURES } from '../types';
 
 const TONES = ['neutral', 'playful', 'serious', 'professional'];
@@ -38,6 +39,11 @@ export function EditNewsletter() {
   useEffect(() => {
     if (!id) {
       setLoading(false);
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user?.email) {
+          setForm((prev) => (prev.delivery_email ? prev : { ...prev, delivery_email: user.email ?? '' }));
+        }
+      });
       return;
     }
     getNewsletter(id)

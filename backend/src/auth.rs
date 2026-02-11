@@ -14,12 +14,28 @@ pub struct UserContext {
 
 pub struct User(pub UserContext);
 
+/// Supabase can send aud as a string or array; accept both so decoding does not fail.
+fn deserialize_aud<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum Aud {
+        S(String),
+        A(Vec<String>),
+    }
+    let v = Option::<Aud>::deserialize(d)?;
+    Ok(match v {
+        None => None,
+        Some(Aud::S(s)) => Some(s),
+        Some(Aud::A(a)) => a.into_iter().next(),
+    })
+}
+
 #[derive(Debug, Deserialize)]
 struct SupabaseJwtClaims {
     sub: String,
     exp: i64,
     email: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_aud")]
     aud: Option<String>,
 }
 
@@ -92,7 +108,10 @@ impl<'r> FromRequest<'r> for User {
         let auth_header = req.headers().get_one("Authorization");
         let token = match auth_header {
             Some(h) if h.starts_with("Bearer ") => h.trim_start_matches("Bearer ").trim(),
-            _ => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+            _ => {
+                eprintln!("[auth] 401: missing or invalid Authorization header (expected Bearer <token>)");
+                return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+            }
         };
 
         let token_data = match config {
@@ -108,7 +127,10 @@ impl<'r> FromRequest<'r> for User {
                     &validation,
                 ) {
                     Ok(d) => d,
-                    Err(_) => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                    Err(e) => {
+                        eprintln!("[auth] 401: legacy JWT decode failed: {}", e);
+                        return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    }
                 }
             }
             JwtConfig::Jwks {
@@ -118,26 +140,44 @@ impl<'r> FromRequest<'r> for User {
             } => {
                 let header = match decode_header(token) {
                     Ok(h) => h,
-                    Err(_) => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                    Err(e) => {
+                        eprintln!("[auth] 401: JWT header decode failed: {}", e);
+                        return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    }
                 };
                 let kid = match header.kid {
                     Some(k) => k,
-                    None => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                    None => {
+                        eprintln!("[auth] 401: JWT has no kid (key id)");
+                        return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    }
                 };
                 let jwks: JwkSet = match reqwest::get(jwks_url.as_str()).await {
                     Ok(r) => match r.json().await {
                         Ok(j) => j,
-                        Err(_) => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                        Err(e) => {
+                            eprintln!("[auth] 401: JWKS fetch parse error: {}", e);
+                            return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                        }
                     },
-                    Err(_) => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                    Err(e) => {
+                        eprintln!("[auth] 401: JWKS fetch failed (check SUPABASE_URL and network): {}", e);
+                        return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    }
                 };
                 let jwk = match jwks.find(&kid) {
                     Some(k) => k,
-                    None => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                    None => {
+                        eprintln!("[auth] 401: JWKS has no key for kid={:?}", kid);
+                        return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    }
                 };
                 let decoding_key = match DecodingKey::from_jwk(jwk) {
                     Ok(k) => k,
-                    Err(_) => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                    Err(e) => {
+                        eprintln!("[auth] 401: DecodingKey from_jwk failed: {}", e);
+                        return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    }
                 };
                 let mut validation = Validation::default();
                 validation.validate_exp = true;
@@ -147,14 +187,20 @@ impl<'r> FromRequest<'r> for User {
                 }
                 match decode::<SupabaseJwtClaims>(token, &decoding_key, &validation) {
                     Ok(d) => d,
-                    Err(_) => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+                    Err(e) => {
+                        eprintln!("[auth] 401: JWT decode/validation failed (issuer/aud/exp?): {}", e);
+                        return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+                    }
                 }
             }
         };
 
         let user_id = match Uuid::parse_str(&token_data.claims.sub) {
             Ok(u) => u,
-            Err(_) => return Outcome::Error((rocket::http::Status::Unauthorized, ())),
+            Err(_) => {
+                eprintln!("[auth] 401: JWT sub is not a valid UUID");
+                return Outcome::Error((rocket::http::Status::Unauthorized, ()));
+            }
         };
         Outcome::Success(User(UserContext {
             user_id,
