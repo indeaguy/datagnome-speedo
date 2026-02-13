@@ -2,7 +2,7 @@
 
 ## OpenClaw
 
-**Next steps (handoff):** If Speedo is running but newsletter generation is not set up, see README section **Next steps: OpenClaw (handoff for next agent)**. In short: install OpenClaw (on the host or via Docker; see **OpenClaw via Docker on the VPS** in the README for the Docker path), enable `gateway.http.endpoints.responses` and token auth, set `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`, and `OPENCLAW_AGENT_ID` in `.env`, start the gateway, restart the backend.
+**Next steps (handoff):** If Speedo is running but newsletter generation is not set up, see README section **OpenClaw (newsletter generation)** and the env table. In short: install OpenClaw (on the host or via Docker; see [docs.clawd.bot/install](https://docs.clawd.bot/install)), enable `gateway.http.endpoints.responses` and token auth, set `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`, and `OPENCLAW_AGENT_ID` in `.env`, start the gateway, restart the backend.
 
 This project uses an **OpenClaw Gateway** to generate newsletter content. The backend calls the OpenResponses-compatible HTTP endpoint (`POST /v1/responses`) with a prompt built from the user’s newsletter config (title, topics, tone, length, and enabled features with their custom instructions).
 
